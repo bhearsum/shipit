@@ -117,6 +117,8 @@ class ReleaseBase:
             "version": self.version,
             "revision": self.revision,
             "build_number": self.build_number,
+            "build_id": self.build_id or "",
+            "locales": sorted(l.locale for l in self.locales),
             "release_eta": self.release_eta or "",
             "status": self.status,
             "created": self.created or "",
@@ -136,21 +138,38 @@ class Release(db.Model, ReleaseBase):
     branch = sa.Column(sa.String, nullable=False)
     revision = sa.Column(sa.String, nullable=False)
     build_number = sa.Column(sa.Integer, nullable=False)
+    build_id = sa.Column(sa.String)
     release_eta = sa.Column(sa.DateTime)
     status = sa.Column(sa.String)  # TODO: move to Enum: shipped, abandoned, scheduled
     phases = sqlalchemy.orm.relationship("Phase", order_by=Phase.id, back_populates="release", lazy="selectin")
+    locales = sqlalchemy.orm.relationship("ReleaseLocale", back_populates="release", lazy="selectin", cascade="all, delete-orphan")
     created = sa.Column(sa.DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
     completed = sa.Column(sa.DateTime)
 
     phase_class = Phase
 
-    def __init__(self, product, version, branch, revision, build_number, release_eta, partial_updates, status, product_key=None, repo_url=""):
+    def __init__(
+        self,
+        product,
+        version,
+        branch,
+        revision,
+        build_number,
+        release_eta,
+        partial_updates,
+        status,
+        product_key=None,
+        repo_url="",
+        build_id=None,
+        locales=None,
+    ):
         self.name = f"{product.capitalize()}-{version}-build{build_number}"
         self.product = product
         self.version = version
         self.branch = branch
         self.revision = revision
         self.build_number = build_number
+        self.build_id = build_id or None
         # Swagger doesn't let passing null values for strings, we use "falsy"
         # ones instead
         self.release_eta = release_eta or None
@@ -158,6 +177,15 @@ class Release(db.Model, ReleaseBase):
         self.status = status
         self.product_key = product_key
         self.repo_url = repo_url
+        if locales:
+            self.locales = [ReleaseLocale(locale=l) for l in locales]
+
+
+class ReleaseLocale(db.Model):
+    __tablename__ = "shipit_api_release_locales"
+    release_id = sa.Column(sa.Integer, sa.ForeignKey("shipit_api_releases.id"), primary_key=True)
+    locale = sa.Column(sa.String, primary_key=True)
+    release = sqlalchemy.orm.relationship("Release", back_populates="locales")
 
     def phase_signoffs(self, phase):
         return [
@@ -327,3 +355,49 @@ class Version(db.Model):
     product_channel = sa.Column(sa.String, nullable=False)
     current_version = sa.Column(sa.String, nullable=False)
     __table_args__ = (sa.UniqueConstraint("product_name", "product_channel", name="_product_name_channel_uc"),)
+
+
+class NightlyBuild(db.Model):
+    __tablename__ = "shipit_api_nightly_builds"
+    id = sa.Column(sa.Integer, primary_key=True)
+    product = sa.Column(sa.String, nullable=False)
+    channel = sa.Column(sa.String, nullable=False)
+    version = sa.Column(sa.String, nullable=False)
+    buildid = sa.Column(sa.String, nullable=False)
+    created = sa.Column(sa.DateTime, default=lambda: datetime.datetime.now(datetime.UTC), nullable=False)
+    locales = sqlalchemy.orm.relationship(
+        "NightlyBuildLocale",
+        back_populates="nightly_build",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+    )
+    __table_args__ = (
+        sa.UniqueConstraint("product", "channel", "version", "buildid", name="_nightly_product_channel_version_buildid_uc"),
+    )
+
+    def __init__(self, product, channel, version, buildid, locales=None):
+        self.product = product
+        self.channel = channel
+        self.version = version
+        self.buildid = buildid
+        if locales:
+            self.locales = [NightlyBuildLocale(locale=l) for l in locales]
+
+    @property
+    def json(self):
+        return {
+            "id": self.id,
+            "product": self.product,
+            "channel": self.channel,
+            "version": self.version,
+            "buildid": self.buildid,
+            "created": self.created.isoformat() if self.created else "",
+            "locales": sorted(l.locale for l in self.locales),
+        }
+
+
+class NightlyBuildLocale(db.Model):
+    __tablename__ = "shipit_api_nightly_build_locales"
+    nightly_build_id = sa.Column(sa.Integer, sa.ForeignKey("shipit_api_nightly_builds.id"), primary_key=True)
+    locale = sa.Column(sa.String, primary_key=True)
+    nightly_build = sqlalchemy.orm.relationship("NightlyBuild", back_populates="locales")
