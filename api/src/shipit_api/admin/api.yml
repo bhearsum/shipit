@@ -825,6 +825,74 @@ paths:
         "409":
           description: Already submitted
           content: {}
+  /nightly-builds:
+    get:
+      summary: List nightly builds
+      operationId: shipit_api.admin.api.list_nightly_builds
+      parameters:
+        - name: product
+          in: query
+          schema:
+            type: string
+        - name: channel
+          in: query
+          schema:
+            type: string
+        - name: version
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: A list of nightly builds
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NightlyBuild'
+    post:
+      summary: Record a new nightly build
+      operationId: shipit_api.admin.api.add_nightly_build
+      requestBody:
+        description: Nightly build details
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NightlyBuildInput'
+        required: true
+      responses:
+        "201":
+          description: Nightly build recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NightlyBuild'
+        "409":
+          description: A nightly build with this product/channel/version/buildid already exists
+  /nightly-builds/{id}:
+    get:
+      summary: Fetch a single nightly build
+      operationId: shipit_api.admin.api.get_nightly_build
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: The nightly build
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NightlyBuild'
+        "404":
+          description: Not found
   /versions/{product}/{channel}:
     get:
       summary: Get the current version for the given product channel
@@ -1075,6 +1143,57 @@ components:
           items:
             type: string
           example: ["af", "de", "en-US"]
+    NightlyBuildInput:
+      required:
+        - product
+        - channel
+        - version
+        - buildid
+        - locales
+      type: object
+      properties:
+        product:
+          $ref: '#/components/schemas/ProductInput'
+        channel:
+          type: string
+          example: nightly
+        version:
+          type: string
+          example: "140.0a1"
+        buildid:
+          type: string
+          example: "20250101010110"
+        locales:
+          type: array
+          items:
+            type: string
+    NightlyBuild:
+      required:
+        - id
+        - product
+        - channel
+        - version
+        - buildid
+        - locales
+      type: object
+      properties:
+        id:
+          type: integer
+        product:
+          type: string
+        channel:
+          type: string
+        version:
+          type: string
+        buildid:
+          type: string
+        created:
+          type: string
+          format: dateTime
+        locales:
+          type: array
+          items:
+            type: string
     ReleaseStatus:
       required:
         - status

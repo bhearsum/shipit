@@ -461,6 +461,57 @@ def create_product_channel_version(product, channel, body):
         }, 201
 
 
+def list_nightly_builds(product=None, channel=None, version=None, limit=None):
+    query = NightlyBuild.query
+    if product:
+        query = query.filter_by(product=product)
+    if channel:
+        query = query.filter_by(channel=channel)
+    if version:
+        query = query.filter_by(version=version)
+    query = query.order_by(NightlyBuild.created.desc())
+    if limit:
+        query = query.limit(limit)
+    return [nb.json for nb in query.all()]
+
+
+def get_nightly_build(id):
+    nb = NightlyBuild.query.filter_by(id=id).first()
+    if not nb:
+        abort(404, f"Nightly build {id} not found")
+    return nb.json
+
+
+def add_nightly_build(body):
+    product = body["product"]
+    required_permission = f"{SCOPE_PREFIX}/add_nightly_build/{product}"
+    if not current_user.has_permissions(required_permission):
+        user_permissions = ", ".join(current_user.get_permissions())
+        abort(401, f"required permission: {required_permission}, user permissions: {user_permissions}")
+
+    channel = body["channel"]
+    version = body["version"]
+    buildid = body["buildid"]
+    locales = body["locales"]
+
+    session = current_app.db.session
+    existing = NightlyBuild.query.filter_by(product=product, channel=channel, version=version, buildid=buildid).first()
+    if existing:
+        return {"error": f"A {product} {channel} build for {version}/{buildid} already exists."}, 409
+
+    nb = NightlyBuild(product=product, channel=channel, version=version, buildid=buildid, locales=locales)
+    session.add(nb)
+    try:
+        session.commit()
+    except IntegrityError as e:
+        session.rollback()
+        abort(409, str(e))
+
+    logger.info("New nightly build of %s %s %s/%s", product, channel, version, buildid)
+    _rebuild_product_details({})
+    return nb.json, 201
+
+
 def check_decision_task(body):
     product = body["product"]
     revision = body["revision"]
