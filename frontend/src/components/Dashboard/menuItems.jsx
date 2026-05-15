@@ -65,6 +65,21 @@ export default [
     ],
   },
   {
+    title: 'Nightlies',
+    items: [
+      {
+        title: 'New',
+        to: '/nightlies/new',
+        Icon: <AddBoxIcon />,
+      },
+      {
+        title: 'List',
+        to: '/nightlies',
+        Icon: <AutorenewIcon />,
+      },
+    ],
+  },
+  {
     title: 'Extensions',
     items: [
       {

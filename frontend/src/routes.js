@@ -21,6 +21,15 @@ const ListMergeAutomation = lazy(
       /* webpackChunkName: 'ListMergeAutomation' */ './views/ListMergeAutomation'
     ),
 );
+const Nightlies = lazy(
+  () => import(/* webpackChunkName: 'Nightlies' */ './views/Nightlies'),
+);
+const NewNightlyBuild = lazy(
+  () =>
+    import(
+      /* webpackChunkName: 'NewNightlyBuild' */ './views/NewNightlyBuild'
+    ),
+);
 
 export default [
   {
@@ -62,6 +71,15 @@ export default [
   {
     component: NewMergeAutomation,
     path: '/merge-automation/new',
+    requiresAuth: true,
+  },
+  {
+    component: Nightlies,
+    path: '/nightlies',
+  },
+  {
+    component: NewNightlyBuild,
+    path: '/nightlies/new',
     requiresAuth: true,
   },
 ];

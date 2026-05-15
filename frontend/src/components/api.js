@@ -329,6 +329,47 @@ export async function guessPartialVersions(
   return suggestedBuilds.concat(suggestedAlternativeBuilds);
 }
 
+/**
+ * List nightly builds, optionally filtered by product/channel/version.
+ */
+export async function getNightlyBuilds(
+  { product, channel, version, limit } = {},
+  signal = null,
+) {
+  const params = {};
+  if (product) params.product = product;
+  if (channel) params.channel = channel;
+  if (version) params.version = version;
+  if (limit) params.limit = limit;
+
+  const res = await axios.get('/nightly-builds', { params, signal });
+  return res.data;
+}
+
+/**
+ * Record a new nightly build (used for backfill or manual entry).
+ */
+export async function submitNightlyBuild({
+  product,
+  channel,
+  version,
+  buildid,
+  locales,
+}) {
+  const res = await axios.post(
+    '/nightly-builds',
+    {
+      product,
+      channel,
+      version,
+      buildid,
+      locales,
+    },
+    { authRequired: true },
+  );
+  return res.data;
+}
+
 async function getTaskStatus(taskId) {
   const url = libUrls.api(
     config.TASKCLUSTER_ROOT_URL,
