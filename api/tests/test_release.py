@@ -184,6 +184,55 @@ def test_schedule_phase(app):
 @mock.patch("shipit_api.admin.api.generate_phases", mock_generate_phases)
 @mock.patch("shipit_api.admin.api.get_service", mocked_get_service)
 @mock.patch("shipit_api.admin.tasks.find_decision_task_id", mocked_find_decision_task_id)
+@mock.patch("shipit_api.admin.api.find_decision_task_id", mocked_find_decision_task_id)
+@mock.patch("shipit_api.admin.api.get_parameters", lambda decision_task_id: {"moz_build_date": "20250101010110"})
+@mock.patch("shipit_api.admin.api.get_shipped_locales", lambda repo, revision, appname: ["af", "de", "en-US"])
+@mock.patch("shipit_api.admin.api.get_disabled_products", mocked_get_disabled_products)
+def test_add_release_with_buildid_and_locales(app):
+    """build_id and locales submitted on the request are persisted, and when
+    omitted, are fetched via parameters.yml + shipped-locales."""
+    with mock.patch(
+        "shipit_api.admin.api.current_user", backend_common.auth.Auth0User("", {"email": "admin", "https://sso.mozilla.com/claim/groups": "releng"})
+    ):
+        with app.test_client() as client:
+            # Explicit values are kept as-is.
+            response = client.post(
+                "/releases",
+                json={
+                    "branch": "releases/mozilla-beta",
+                    "build_number": 1,
+                    "product": "firefox",
+                    "revision": "abc",
+                    "version": "170.0b1",
+                    "build_id": "20250505050505",
+                    "locales": ["af", "de"],
+                },
+            )
+            assert response.status_code == 201
+            r = response.json()
+            assert r["build_id"] == "20250505050505"
+            assert r["locales"] == ["af", "de"]
+
+            # Omitted values are auto-populated.
+            response = client.post(
+                "/releases",
+                json={
+                    "branch": "releases/mozilla-beta",
+                    "build_number": 1,
+                    "product": "firefox",
+                    "revision": "abc",
+                    "version": "170.0b2",
+                },
+            )
+            assert response.status_code == 201
+            r = response.json()
+            assert r["build_id"] == "20250101010110"
+            assert r["locales"] == ["af", "de", "en-US"]
+
+
+@mock.patch("shipit_api.admin.api.generate_phases", mock_generate_phases)
+@mock.patch("shipit_api.admin.api.get_service", mocked_get_service)
+@mock.patch("shipit_api.admin.tasks.find_decision_task_id", mocked_find_decision_task_id)
 @mock.patch("shipit_api.admin.api.get_disabled_products", mocked_get_disabled_products)
 def test_add_release(app):
     with mock.patch(

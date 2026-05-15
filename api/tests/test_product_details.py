@@ -15,8 +15,9 @@ from aioresponses import aioresponses
 from sqlalchemy import engine, event
 
 import shipit_api.admin.product_details
-from shipit_api.admin.product_details import fetch_l10n_data, rebuild
-from shipit_api.common.models import Release, Version
+from shipit_api.admin.product_details import fetch_l10n_data, get_product_locales, rebuild
+from shipit_api.common.models import NightlyBuild, Release, Version
+from shipit_api.common.product import Product
 
 
 # product_details uses a postgresql-specific "split_part" sql function
@@ -221,3 +222,83 @@ async def test_rebuild(app, tmp_path):
 
     assert not list(parent.glob("l10n/Devedition-*"))
     assert next(parent.glob("l10n/Firefox-134.0b8-*")).name == "Firefox-134.0b8-build1.json"
+
+
+def _make_release(product, branch, version, build_id, locales, build_number=1):
+    release = Release(
+        product=product,
+        branch=branch,
+        version=version,
+        revision="0" * 40,
+        build_number=build_number,
+        release_eta=None,
+        status="shipped",
+        partial_updates=None,
+        build_id=build_id,
+        locales=locales,
+    )
+    return release
+
+
+def test_get_product_locales_picks_earliest_per_channel():
+    """For each (locale, channel), the first_release entry should be the
+    lowest-version release that contained the locale."""
+    releases = [
+        _make_release("firefox", "releases/mozilla-beta", "139.0b3", "20250301010101", ["af", "de"]),
+        _make_release("firefox", "releases/mozilla-beta", "140.0b1", "20250401010101", ["af"]),
+        _make_release("firefox", "releases/mozilla-release", "139.0", "20250310010101", ["af", "de"], build_number=2),
+        # ESR releases on different branches still group under "esr".
+        _make_release("firefox", "releases/mozilla-esr140", "140.0esr", "20250505050505", ["af"]),
+    ]
+    nightly = NightlyBuild(product="firefox", channel="nightly", version="141.0a1", buildid="20250602020202", locales=["af", "fr"])
+    nightly_older = NightlyBuild(product="firefox", channel="nightly", version="140.0a1", buildid="20250101010110", locales=["af"])
+
+    locales = get_product_locales(Product.FIREFOX, releases, [nightly, nightly_older])
+
+    # "af" appeared on every channel; verify the earliest version was picked.
+    assert locales["af"]["first_release"]["nightly"] == {
+        "version": "140.0a1",
+        "buildid": "20250101010110",
+        "buildNumber": "1",
+    }
+    assert locales["af"]["first_release"]["beta"] == {
+        "version": "139.0b3",
+        "buildid": "20250301010101",
+        "buildNumber": "1",
+    }
+    assert locales["af"]["first_release"]["release"] == {
+        "version": "139.0",
+        "buildid": "20250310010101",
+        "buildNumber": "2",
+    }
+    assert locales["af"]["first_release"]["esr"] == {
+        "version": "140.0esr",
+        "buildid": "20250505050505",
+        "buildNumber": "1",
+    }
+    # "fr" only ever appeared on nightly.
+    assert set(locales["fr"]["first_release"].keys()) == {"nightly"}
+    # "de" never appeared on nightly or esr.
+    assert set(locales["de"]["first_release"].keys()) == {"beta", "release"}
+
+
+def test_get_product_locales_filters_by_product():
+    """Only entries matching the target product are included."""
+    firefox = _make_release("firefox", "releases/mozilla-beta", "140.0b1", "20250401", ["af"])
+    thunderbird = _make_release("thunderbird", "releases/comm-beta", "140.0b1", "20250401", ["af"])
+
+    fx_result = get_product_locales(Product.FIREFOX, [firefox, thunderbird], [])
+    tb_result = get_product_locales(Product.THUNDERBIRD, [firefox, thunderbird], [])
+
+    assert "af" in fx_result
+    assert "af" in tb_result
+    # Only one entry per locale even though both products contained it.
+    assert fx_result["af"]["first_release"]["beta"]["version"] == "140.0b1"
+    assert tb_result["af"]["first_release"]["beta"]["version"] == "140.0b1"
+
+
+def test_get_product_locales_skips_unknown_projects():
+    """Releases on non-shipping branches (try, projects/maple) are ignored."""
+    try_release = _make_release("firefox", "try", "140.0a1", "20250401", ["af"])
+    result = get_product_locales(Product.FIREFOX, [try_release], [])
+    assert result == {}
