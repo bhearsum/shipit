@@ -297,6 +297,87 @@ def get_product_channel_version(db_session: sqlalchemy.orm.Session, product: str
     return version.current_version
 
 
+def get_nightly_builds_from_db(db_session: sqlalchemy.orm.Session) -> typing.List[shipit_api.common.models.NightlyBuild]:
+    NightlyBuild = shipit_api.common.models.NightlyBuild
+    return db_session.query(NightlyBuild).all()
+
+
+def _project_to_channel(project: str) -> typing.Optional[str]:
+    """Map a Release.project string (e.g. "mozilla-release") to a stable
+    channel name used in $product_locales.json."""
+    if project in ("mozilla-central", "comm-central"):
+        return "nightly"
+    if project in ("mozilla-beta", "comm-beta"):
+        return "beta"
+    if project in ("mozilla-release", "comm-release"):
+        return "release"
+    if project.startswith("mozilla-esr") or project.startswith("comm-esr"):
+        return "esr"
+    return None
+
+
+def get_product_locales(
+    product: Product,
+    releases: typing.List[shipit_api.common.models.Release],
+    nightly_builds: typing.List[shipit_api.common.models.NightlyBuild],
+) -> typing.Dict[str, typing.Dict[str, typing.Dict[str, typing.Dict[str, str]]]]:
+    """Build the $product_locales.json payload.
+
+    For each locale the product has ever shipped to, record the first
+    version+buildid+buildNumber the locale appeared in on each channel
+    (nightly/beta/release/esr).  "First" is the lowest mozilla-version
+    sortable version, tiebroken by created timestamp then build_number.
+    """
+    candidates: typing.Dict[str, typing.Dict[str, typing.List[typing.Tuple[typing.Any, typing.Dict[str, str]]]]] = collections.defaultdict(
+        lambda: collections.defaultdict(list)
+    )
+
+    for release in releases:
+        if release.product != product.value:
+            continue
+        channel = _project_to_channel(release.project)
+        if not channel:
+            continue
+        try:
+            version_obj = parse_version(release.product, release.version)
+        except ValueError:
+            continue
+        info = {
+            "version": release.version,
+            "buildid": release.build_id or "",
+            "buildNumber": str(release.build_number),
+        }
+        sortkey = (version_obj, release.created or datetime.min, release.build_number or 0)
+        for loc in release.locales:
+            candidates[loc.locale][channel].append((sortkey, info))
+
+    for nb in nightly_builds:
+        if nb.product != product.value:
+            continue
+        channel = nb.channel or "nightly"
+        try:
+            version_obj = parse_version(nb.product, nb.version)
+        except ValueError:
+            continue
+        info = {
+            "version": nb.version,
+            "buildid": nb.buildid,
+            "buildNumber": "1",
+        }
+        sortkey = (version_obj, nb.created or datetime.min, 0)
+        for loc in nb.locales:
+            candidates[loc.locale][channel].append((sortkey, info))
+
+    result: typing.Dict[str, typing.Dict[str, typing.Dict[str, typing.Dict[str, str]]]] = {}
+    for locale in sorted(candidates):
+        first_release: typing.Dict[str, typing.Dict[str, str]] = {}
+        for channel, entries in candidates[locale].items():
+            entries.sort(key=lambda x: x[0])
+            first_release[channel] = entries[0][1]
+        result[locale] = {"first_release": first_release}
+    return result
+
+
 def get_product_categories(product: Product, version: str) -> typing.List[ProductCategory]:
     # typically, these are dot releases that are considered major
     SPECIAL_FIREFOX_MAJORS = ["14.0.1", "125.0.1"]
@@ -1182,6 +1263,10 @@ async def rebuild(
             status=None,
         ),
     ]
+    # get all nightly build history (used for $product_locales.json)
+    logger.info("Getting nightly build history from the database")
+    nightly_build_rows = get_nightly_builds_from_db(db_session)
+
     logger.info("Getting locales from hg.mozilla.org for each release from database")
     # use limit_per_host=50 since hg.mozilla.org doesn't like too many connections
     async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(limit_per_host=50), timeout=aiohttp.ClientTimeout(total=30)) as session:
@@ -1247,6 +1332,9 @@ async def rebuild(
             breakpoint_version, Product.THUNDERBIRD, combined_releases, combined_l10n, old_product_details, firefox_nightly_version, thunderbird_nightly_version
         ),
         "thunderbird_versions.json": get_thunderbird_versions(releases, thunderbird_nightly_version),
+        "firefox_locales.json": get_product_locales(Product.FIREFOX, releases, nightly_build_rows),
+        "devedition_locales.json": get_product_locales(Product.DEVEDITION, releases, nightly_build_rows),
+        "thunderbird_locales.json": get_product_locales(Product.THUNDERBIRD, releases, nightly_build_rows),
     }
 
     product_details.update(get_regions(old_product_details))
