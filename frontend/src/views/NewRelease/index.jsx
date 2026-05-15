@@ -34,6 +34,7 @@ import maybeShorten from '../../components/text';
 import {
   getBranches,
   getPushes,
+  getShippedLocales,
   getVersion,
   isGitHubRepo,
 } from '../../components/vcs';
@@ -62,6 +63,7 @@ export default function NewRelease() {
   const [revision, setRevision] = useState('');
   const [version, setVersion] = useState('');
   const [buildNumber, setBuildNumber] = useState(0);
+  const [locales, setLocales] = useState([]);
   const [partialFieldEnabled, setPartialFieldEnabled] = useState(true);
   const [partialVersions, setPartialVersions] = useState([]);
   const [suggestedRevisions, setSuggestedRevisions] = useState(null);
@@ -85,6 +87,7 @@ export default function NewRelease() {
     setRevision('');
     setVersion('');
     setBuildNumber(0);
+    setLocales([]);
     setPartialVersions([]);
     setReleaseEta(null);
     setDecisionTaskStatus(null);
@@ -203,8 +206,26 @@ export default function NewRelease() {
         );
         if (signal.aborted) return;
 
+        let shippedLocales = [];
+        if (selectedProduct.appName) {
+          try {
+            shippedLocales = await getShippedLocales(
+              selectedBranch.repo,
+              revision,
+              selectedProduct.appName,
+              signal,
+            );
+          } catch (localesErr) {
+            if (signal.aborted) return;
+            // Non-fatal: the backend will try again on submit.
+            shippedLocales = [];
+          }
+        }
+        if (signal.aborted) return;
+
         setVersion(ver);
         setBuildNumber(nextBuildNumber);
+        setLocales(shippedLocales);
       } catch (e) {
         if (signal.aborted) return;
         setError(
@@ -219,6 +240,7 @@ export default function NewRelease() {
 
     setVersion('');
     setBuildNumber(0);
+    setLocales([]);
     setDecisionTaskStatus(null);
     setError(null);
     const timeout = setTimeout(fetchRevisionInfo, 500);
@@ -509,6 +531,7 @@ export default function NewRelease() {
                 partialFieldEnabled ? partialVersions : [],
                 version,
                 buildNumber,
+                locales,
               );
 
               setOpen(false);
@@ -544,6 +567,11 @@ export default function NewRelease() {
         <Typography component="h3" variant="h6">
           Build #: {buildNumber}
         </Typography>
+        {locales.length > 0 && (
+          <Typography component="p" variant="body2">
+            Locales ({locales.length}): {locales.join(', ')}
+          </Typography>
+        )}
       </React.Fragment>
     );
   };

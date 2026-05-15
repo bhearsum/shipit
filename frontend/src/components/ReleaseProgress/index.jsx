@@ -198,6 +198,19 @@ export default function ReleaseProgress({
         <Box typography="caption" display="block">
           Created on {dateCreated} with {renderReleaseTitle(xpi, release)}
         </Box>
+        {release.build_id && (
+          <Box typography="caption" display="block">
+            buildid: {release.build_id}
+          </Box>
+        )}
+        {Array.isArray(release.locales) && release.locales.length > 0 && (
+          <Box typography="caption" display="block">
+            <details>
+              <summary>{release.locales.length} locales</summary>
+              {release.locales.join(', ')}
+            </details>
+          </Box>
+        )}
         <Box sx={{ position: 'relative' }}>
           <Box sx={{ width: '50%', position: 'absolute' }}>
             {release.name.toLowerCase().includes('android') && (

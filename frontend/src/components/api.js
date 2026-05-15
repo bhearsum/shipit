@@ -244,6 +244,7 @@ export async function submitRelease(
   partialVersions,
   version,
   buildNumber,
+  locales,
 ) {
   const { product } = selectedProduct;
   const { branch, repo, productKey } = selectedBranch;
@@ -270,6 +271,10 @@ export async function submitRelease(
 
   if (productKey) {
     releaseObj.product_key = productKey;
+  }
+
+  if (locales && locales.length > 0) {
+    releaseObj.locales = locales;
   }
 
   const req = await axios.post('/releases', releaseObj, {

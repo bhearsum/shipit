@@ -208,3 +208,30 @@ export async function getLocales(repo, revision, appName) {
 
   return Object.keys(locales);
 }
+
+/**
+ * Get the list of locales the release will actually ship to from the in-tree
+ * shipped-locales file.  Lines may include a locale code followed by an
+ * optional space-separated list of platforms; only the locale itself is kept.
+ */
+export async function getShippedLocales(repo, revision, appName, signal) {
+  if (!isHgRepo(repo)) {
+    return [];
+  }
+  const shippedLocalesPath = `${appName}/locales/shipped-locales`;
+  const url = `${repo}/raw-file/${revision}/${shippedLocalesPath}`;
+  const res = await axios.get(url, {
+    transformResponse: [(data) => data],
+    signal,
+  });
+
+  if (res.status !== 200 || typeof res.data !== 'string') {
+    return [];
+  }
+
+  return res.data
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith('#'))
+    .map((line) => line.split(/\s+/)[0]);
+}
