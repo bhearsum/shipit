@@ -1059,6 +1059,22 @@ components:
         repo_url:
           type: string
           example: https://github.com/mozilla-mobile/firefox-android
+        build_id:
+          type: string
+          description: >
+            Engineering buildid for the release (typically moz_build_date from
+            the decision task's parameters.yml). If omitted, the backend will
+            attempt to fetch it.
+          example: "20250201010101"
+        locales:
+          type: array
+          description: >
+            List of locale codes the release will ship to. If omitted, the
+            backend will attempt to fetch them from the in-tree
+            shipped-locales file.
+          items:
+            type: string
+          example: ["af", "de", "en-US"]
     ReleaseStatus:
       required:
         - status
@@ -1131,6 +1147,13 @@ components:
         build_number:
           type: integer
           example: 12
+        build_id:
+          type: string
+          example: "20250201010101"
+        locales:
+          type: array
+          items:
+            type: string
         release_eta:
           type: string
           format: dateTime

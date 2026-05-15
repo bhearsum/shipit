@@ -65,6 +65,8 @@ def product_to_appname(product):
     """Convert product name to appName"""
     if product in [Product.FIREFOX.value, Product.DEVEDITION.value]:
         return "browser"
+    if product == Product.THUNDERBIRD.value:
+        return "mail"
 
 
 def get_locales(repo, revision, appname):
@@ -73,3 +75,19 @@ def get_locales(repo, revision, appname):
     req = requests.get(url, timeout=10)
     req.raise_for_status()
     return list(req.json().keys())
+
+
+def get_shipped_locales(repo, revision, appname):
+    """Fetches the list of shipped locales for a release from the in-tree
+    shipped-locales file. Lines may include a locale code followed by an
+    optional space-separated list of platforms; only the locale is kept."""
+    url = f"{repo}/raw-file/{revision}/{appname}/locales/shipped-locales"
+    req = requests.get(url, timeout=10)
+    req.raise_for_status()
+    locales = []
+    for line in req.text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        locales.append(line.split()[0])
+    return locales

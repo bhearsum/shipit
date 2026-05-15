@@ -19,14 +19,22 @@ from shipit_api.admin.release import (
     Product,
     bump_version,
     get_locales,
+    get_shipped_locales,
     is_eme_free_enabled,
     is_partner_attribution_enabled,
     is_partner_repacks_enabled,
     product_to_appname,
 )
-from shipit_api.admin.tasks import UnsupportedFlavor, cancel_action_task_group, find_decision_task_id, generate_phases, rendered_hook_payload
+from shipit_api.admin.tasks import (
+    UnsupportedFlavor,
+    cancel_action_task_group,
+    find_decision_task_id,
+    generate_phases,
+    get_parameters,
+    rendered_hook_payload,
+)
 from shipit_api.common.config import HG_PREFIX, PROJECT_NAME, PULSE_ROUTE_REBUILD_PRODUCT_DETAILS, SCOPE_PREFIX
-from shipit_api.common.models import DisabledProduct, Phase, Release, Signoff, Version, XPIRelease
+from shipit_api.common.models import DisabledProduct, NightlyBuild, Phase, Release, Signoff, Version, XPIRelease
 from shipit_api.public.api import get_disabled_products, list_releases
 
 logger = logging.getLogger(__name__)
@@ -78,6 +86,34 @@ def add_release(body):
             abort(400, "Partial suggestion works for automated betas only")
 
         partial_updates = _suggest_partials(product=product, branch=branch)
+
+    repo_url = body.get("repo_url", "")
+    revision = body["revision"]
+    project = branch.split("/")[-1]
+
+    build_id = body.get("build_id")
+    locales = body.get("locales")
+    if not build_id or not locales:
+        try:
+            decision_task_id = find_decision_task_id(repo_url, project, revision, product)
+        except Exception as e:
+            logger.warning("Unable to find decision task to populate build_id/locales: %s", e)
+            decision_task_id = None
+        if decision_task_id and not build_id:
+            try:
+                params = get_parameters(decision_task_id)
+                build_id = params.get("moz_build_date")
+            except Exception as e:
+                logger.warning("Unable to fetch parameters.yml for build_id: %s", e)
+        if not locales:
+            appname = product_to_appname(product)
+            if appname:
+                hg_repo = repo_url if repo_url and repo_url.startswith("http") else f"{HG_PREFIX}/{branch}"
+                try:
+                    locales = get_shipped_locales(hg_repo, revision, appname)
+                except Exception as e:
+                    logger.warning("Unable to fetch shipped-locales: %s", e)
+
     release = Release(
         branch=branch,
         build_number=body["build_number"],
@@ -85,10 +121,12 @@ def add_release(body):
         product_key=body.get("product_key"),
         product=product,
         release_eta=body.get("release_eta"),
-        repo_url=body.get("repo_url", ""),
-        revision=body["revision"],
+        repo_url=repo_url,
+        revision=revision,
         status="scheduled",
         version=body["version"],
+        build_id=build_id,
+        locales=locales,
     )
     try:
         next_version = bump_version(release.product, release.version)

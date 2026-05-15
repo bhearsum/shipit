@@ -160,6 +160,13 @@ components:
         build_number:
           type: integer
           example: 12
+        build_id:
+          type: string
+          example: "20250201010101"
+        locales:
+          type: array
+          items:
+            type: string
         release_eta:
           type: string
           format: dateTime
