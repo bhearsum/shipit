@@ -555,22 +555,32 @@ def get_allowed_github_files(owner: str, repo: str) -> set[re.Pattern]:
 
 
 def _fx_merge_behavior(behavior, pretty_name, prod_repo, prod_project):
+    github_branch_by_behavior = {
+        "main-to-beta": "main",
+        "early-to-late-beta": "beta",
+        "beta-to-release": "beta",
+        "release-to-esr": "release",
+        "bump-main": "main",
+        "bump-esr153": "esr153",
+        "bump-esr140": "esr140",
+        "bump-esr115": "esr115",
+    }
     return {
         "behavior": behavior,
         "pretty_name": pretty_name,
         "by-env": {
             "local": {
                 "always-target-tip": False,
-                "repo": "https://hg.mozilla.org/try",
+                "repo": "https://github.com/mozilla-releng/staging-firefox",
                 "project": "try",
-                "branch": "default",
+                "branch": github_branch_by_behavior[behavior],
                 "version_path": "browser/config/version_display.txt",
             },
             "dev": {
                 "always-target-tip": False,
-                "repo": "https://hg.mozilla.org/try",
+                "repo": "https://github.com/mozilla-releng/staging-firefox",
                 "project": "try",
-                "branch": "default",
+                "branch": github_branch_by_behavior[behavior],
                 "version_path": "browser/config/version_display.txt",
             },
             "production": {

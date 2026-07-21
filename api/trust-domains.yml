@@ -17,6 +17,7 @@ gecko:
   - https://hg.mozilla.org/releases/mozilla-esr140
   - https://hg.mozilla.org/releases/mozilla-esr153
   - https://hg.mozilla.org/try
+  - https://github.com/mozilla-releng/staging-firefox
 mobile:
   - https://github.com/mozilla-mobile/firefox-android
   - https://github.com/mozilla-releng/staging-firefox-android
