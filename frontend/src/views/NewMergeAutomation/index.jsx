@@ -41,6 +41,19 @@ const CommitInfoBox = styled(Box)(({ theme }) => ({
   paddingLeft: theme.spacing(3),
 }));
 
+// Behaviors that merge one branch into another need a second revision, fetched
+// from the target branch's tip.
+const SECOND_REVISION_TARGETS = {
+  'main-to-beta': {
+    repo: 'https://hg.mozilla.org/releases/mozilla-beta',
+    branch: 'default',
+  },
+  'beta-to-release': {
+    repo: 'https://hg.mozilla.org/releases/mozilla-release',
+    branch: 'default',
+  },
+};
+
 export default function NewMergeAutomation() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -55,6 +68,12 @@ export default function NewMergeAutomation() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [error, setError] = useState(null);
   const [revisionInfo, setRevisionInfo] = useState(null);
+  const [secondRevision, setSecondRevision] = useState('');
+  const [secondRevisionInfo, setSecondRevisionInfo] = useState(null);
+  const [secondRevisionError, setSecondRevisionError] = useState(null);
+
+  const secondRevisionTarget = SECOND_REVISION_TARGETS[selectedBehavior];
+  const needsSecondRevision = Boolean(secondRevisionTarget);
 
   const [submitMergeAutomationState, submitMergeAutomationAction] = useAction(
     submitMergeAutomation,
@@ -79,6 +98,9 @@ export default function NewMergeAutomation() {
     setSelectedRevision('');
     setDryRun(true);
     setDialogOpen(false);
+    setSecondRevision('');
+    setSecondRevisionInfo(null);
+    setSecondRevisionError(null);
 
     updateMergeBehaviors();
   }, [product]);
@@ -119,6 +141,64 @@ export default function NewMergeAutomation() {
     setDecisionTaskStatus(null);
     setError(null);
     updateMergeRevisions();
+
+    return () => {
+      abortController.abort();
+    };
+  }, [selectedBehavior, mergeBehaviors]);
+
+  useEffect(() => {
+    if (!needsSecondRevision || !mergeBehaviors) {
+      setSecondRevision('');
+      setSecondRevisionInfo(null);
+      setSecondRevisionError(null);
+      return;
+    }
+
+    const abortController = new AbortController();
+
+    async function updateSecondRevision() {
+      try {
+        const secondBehaviorConfig = {
+          ...secondRevisionTarget,
+          version_path: mergeBehaviors[selectedBehavior].version_path,
+          'always-target-tip': true,
+        };
+        const revs = await getMergeRevisions(
+          secondBehaviorConfig,
+          abortController.signal,
+        );
+        const tip = Object.keys(revs)[0];
+
+        if (!tip) {
+          setSecondRevisionError(
+            `No revisions found on ${secondBehaviorConfig.repo}`,
+          );
+          return;
+        }
+
+        setSecondRevision(tip);
+        const info = await getMergeInfo(
+          secondBehaviorConfig,
+          tip,
+          abortController.signal,
+          revs[tip],
+        );
+        setSecondRevisionInfo(info);
+      } catch (e) {
+        if (e.message === 'canceled') {
+          return;
+        }
+        setSecondRevisionError(
+          `Failed to fetch target revision for ${selectedBehavior}: ${e.toString()}`,
+        );
+      }
+    }
+
+    setSecondRevision('');
+    setSecondRevisionInfo(null);
+    setSecondRevisionError(null);
+    updateSecondRevision();
 
     return () => {
       abortController.abort();
@@ -270,7 +350,47 @@ export default function NewMergeAutomation() {
     );
   }
 
+  function renderSecondRevision() {
+    if (secondRevisionError !== null) {
+      return (
+        <Typography color="error" variant="body2">
+          {secondRevisionError}
+        </Typography>
+      );
+    }
+
+    if (secondRevisionInfo === null) {
+      return <CircularProgress sx={{ display: 'block', margin: 'auto' }} />;
+    }
+
+    return (
+      <Box>
+        <Box>
+          <Typography component="h3" variant="h6">
+            Target revision: {secondRevision.slice(0, 12)} (
+            {secondRevisionInfo.version})
+          </Typography>
+        </Box>
+        <CommitInfoBox>
+          <Typography variant="body2" sx={{ fontWeight: 500 }}>
+            {secondRevisionInfo.commit_message}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            {secondRevisionInfo.commit_author}
+          </Typography>
+        </CommitInfoBox>
+      </Box>
+    );
+  }
+
   function okToSubmit() {
+    if (
+      needsSecondRevision &&
+      (!secondRevision || secondRevisionInfo === null || secondRevisionError)
+    ) {
+      return false;
+    }
+
     return (
       product &&
       selectedBehavior &&
@@ -290,7 +410,15 @@ export default function NewMergeAutomation() {
           Submitting will create a{' '}
           <Typography variant="inlineCode">{selectedBehavior}</Typography> merge
           automation for revision{' '}
-          <Typography variant="inlineCode">{selectedRevision}</Typography>.
+          <Typography variant="inlineCode">{selectedRevision}</Typography>
+          {needsSecondRevision && (
+            <>
+              {' '}
+              targeting{' '}
+              <Typography variant="inlineCode">{secondRevision}</Typography>
+            </>
+          )}
+          .
         </DialogContent>
         <DialogActions>
           {submitMergeAutomationState.loading && <CircularProgress />}
@@ -305,10 +433,18 @@ export default function NewMergeAutomation() {
           </Button>
           <Button
             onClick={async () => {
+              const fromRevision = needsSecondRevision
+                ? selectedRevision
+                : undefined;
+              const toRevision = needsSecondRevision
+                ? secondRevision
+                : selectedRevision;
               const result = await submitMergeAutomationAction(
                 product,
                 selectedBehavior,
                 selectedRevision,
+                fromRevision,
+                toRevision,
                 dryRun,
                 revisionInfo.version,
                 revisionInfo.commit_message,
@@ -366,6 +502,9 @@ export default function NewMergeAutomation() {
               />
             )}
           </Box>
+        )}
+        {selectedRevision !== '' && needsSecondRevision && (
+          <Box sx={{ mt: 2 }}>{renderSecondRevision()}</Box>
         )}
 
         <Box sx={{ mt: 3 }}>

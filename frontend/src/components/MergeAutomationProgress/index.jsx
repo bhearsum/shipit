@@ -188,10 +188,10 @@ export default function MergeAutomationProgress({
                 </Typography>
                 <Divider orientation="vertical" flexItem />
                 <StatusLink
-                  href={`${automation.repo}/rev/${automation.revision}`}
+                  href={`${automation.repo}/rev/${automation.decision_task_revision}`}
                   target="_blank"
                 >
-                  {automation.revision.slice(0, 12)}
+                  {automation.decision_task_revision.slice(0, 12)}
                   <LaunchIcon fontSize="inherit" />
                 </StatusLink>
               </Box>
@@ -353,7 +353,7 @@ export default function MergeAutomationProgress({
           <Typography>
             Are you sure you want to cancel the merge automation{' '}
             <strong>"{automation.pretty_name}"</strong> for revision{' '}
-            <code>{automation.revision.slice(0, 12)}</code>?
+            <code>{automation.decision_task_revision.slice(0, 12)}</code>?
           </Typography>
         </DialogContent>
         <DialogActions>

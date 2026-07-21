@@ -121,7 +121,9 @@ export async function getMergeInfo(
 export async function submitMergeAutomation(
   product,
   behavior,
-  revision,
+  decisionTaskRevision,
+  fromRevision,
+  toRevision,
   dryRun,
   version,
   commitMessage,
@@ -130,7 +132,9 @@ export async function submitMergeAutomation(
   const mergeAutomationObj = {
     product,
     behavior,
-    revision,
+    decision_task_revision: decisionTaskRevision,
+    from_revision: fromRevision,
+    to_revision: toRevision,
     dryRun,
     version,
     commitMessage,
