@@ -192,7 +192,9 @@ class MergeAutomation(db.Model):
     # User controlled properties
     product = sa.Column(sa.String, nullable=False)
     behavior = sa.Column(sa.String, nullable=False)
-    revision = sa.Column(sa.String, nullable=False)
+    decision_task_revision = sa.Column(sa.String, nullable=False)
+    from_revision = sa.Column(sa.String, nullable=True)
+    to_revision = sa.Column(sa.String, nullable=True)
     dry_run = sa.Column(sa.Boolean, default=True, nullable=False)
 
     created = sa.Column(sa.DateTime, default=lambda: datetime.datetime.now(datetime.UTC), nullable=False)
@@ -216,7 +218,9 @@ class MergeAutomation(db.Model):
             "id": self.id,
             "product": self.product,
             "behavior": self.behavior,
-            "revision": self.revision,
+            "decision_task_revision": self.decision_task_revision,
+            "from_revision": self.from_revision,
+            "to_revision": self.to_revision,
             "dry_run": self.dry_run,
             "created": self.created.isoformat(),
             "completed": self.completed.isoformat() if self.completed else None,

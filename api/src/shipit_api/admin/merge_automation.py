@@ -54,7 +54,9 @@ def submit_merge_automation():
         abort(401, f"required permission: {required_permission}, user permissions: {user_permissions}")
 
     behavior_name = body["behavior"]
-    revision = body["revision"]
+    decision_task_revision = body["decision_task_revision"]
+    from_revision = body.get("from_revision")
+    to_revision = body["to_revision"]
     dry_run = body.get("dryRun", True)
     version = body["version"]
     commit_message = body["commitMessage"]
@@ -65,7 +67,9 @@ def submit_merge_automation():
     automation = MergeAutomation(
         product=product,
         behavior=behavior_name,
-        revision=revision,
+        decision_task_revision=decision_task_revision,
+        from_revision=from_revision,
+        to_revision=to_revision,
         version=version,
         dry_run=dry_run,
         commit_message=commit_message,
@@ -167,7 +171,7 @@ def start_merge_automation(automation_id):
 
 
 def trigger_merge_automation_action(automation):
-    decision_task_id = find_decision_task_id(automation.repo, automation.project, automation.revision, automation.product)
+    decision_task_id = find_decision_task_id(automation.repo, automation.project, automation.decision_task_revision, automation.product)
     actions = get_actions(decision_task_id)
 
     merge_action = find_action("merge-automation", actions)
@@ -178,6 +182,8 @@ def trigger_merge_automation_action(automation):
         "behavior": automation.behavior,
         "force-dry-run": automation.dry_run,
         "merge-automation-id": automation.id,
+        "from-revision": automation.from_revision,
+        "to-revision": automation.to_revision,
     }
 
     hooks = get_service("hooks")

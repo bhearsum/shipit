@@ -59,15 +59,28 @@ def test_list_merge_automation_no_data(app):
 
 def test_list_merge_automation_with_data(app):
     automation1 = create_merge_automation_with_defaults(
-        product="firefox", behavior="main-to-beta", revision="abc123", version="130.0", status=TaskStatus.Pending, dry_run=True
+        product="firefox",
+        behavior="main-to-beta",
+        decision_task_revision="abc123",
+        from_revision="abc123",
+        version="130.0",
+        status=TaskStatus.Pending,
+        dry_run=True,
     )
     automation2 = create_merge_automation_with_defaults(
-        product="firefox", behavior="main-to-beta", revision="ghi789", version="128.0", status=TaskStatus.Completed, dry_run=False
+        product="firefox",
+        behavior="main-to-beta",
+        decision_task_revision="ghi789",
+        from_revision="ghi789",
+        version="128.0",
+        status=TaskStatus.Completed,
+        dry_run=False,
     )
     automation3 = create_merge_automation_with_defaults(
         product="firefox",
         behavior="beta-to-release",
-        revision="def456",
+        decision_task_revision="def456",
+        from_revision="def456",
         version="129.0",
         status=TaskStatus.Running,
         dry_run=False,
@@ -91,7 +104,9 @@ def test_list_merge_automation_with_data(app):
                 "product": "firefox",
                 "behavior": "beta-to-release",
                 "pretty_name": "Beta -> release",
-                "revision": "def456",
+                "decision_task_revision": "def456",
+                "from_revision": "def456",
+                "to_revision": None,
                 "version": "129.0",
                 "repo": "https://hg.mozilla.org/releases/mozilla-beta",
                 "status": "running",
@@ -107,7 +122,9 @@ def test_list_merge_automation_with_data(app):
                 "product": "firefox",
                 "behavior": "main-to-beta",
                 "pretty_name": "Main -> beta",
-                "revision": "abc123",
+                "decision_task_revision": "abc123",
+                "from_revision": "abc123",
+                "to_revision": None,
                 "version": "130.0",
                 "repo": "https://hg.mozilla.org/try",
                 "status": "pending",
@@ -123,7 +140,9 @@ def test_list_merge_automation_with_data(app):
                 "product": "firefox",
                 "behavior": "main-to-beta",
                 "pretty_name": "Main -> beta",
-                "revision": "ghi789",
+                "decision_task_revision": "ghi789",
+                "from_revision": "ghi789",
+                "to_revision": None,
                 "version": "128.0",
                 "repo": "https://hg.mozilla.org/try",
                 "status": "completed",
@@ -147,7 +166,9 @@ def test_submit_merge_automation_success(mock_user, app):
         payload = {
             "product": "firefox",
             "behavior": "main-to-beta",
-            "revision": "abc123",
+            "decision_task_revision": "ghi789",
+            "from_revision": "abc123",
+            "to_revision": "def456",
             "dryRun": True,
             "version": "130.0",
             "commitMessage": "Test commit message",
@@ -159,6 +180,55 @@ def test_submit_merge_automation_success(mock_user, app):
         assert response.json() == {"message": "Merge automation created successfully"}
 
         mock_user.has_permissions.assert_called_once_with("project:releng:services/shipit_api/add_merge_automation/firefox")
+
+        automation = MergeAutomation.query.filter_by(product="firefox", behavior="main-to-beta").one()
+        assert automation.decision_task_revision == "ghi789"
+        assert automation.from_revision == "abc123"
+        assert automation.to_revision == "def456"
+
+
+@patch("shipit_api.admin.merge_automation.current_user")
+def test_submit_merge_automation_success_without_from_revision(mock_user, app):
+    mock_user.has_permissions.return_value = True
+
+    with app.test_client() as client:
+        payload = {
+            "product": "firefox",
+            "behavior": "bump-main",
+            "decision_task_revision": "abc123",
+            "to_revision": "abc123",
+            "dryRun": True,
+            "version": "130.0",
+            "commitMessage": "Test commit message",
+            "commitAuthor": "test@example.com",
+        }
+
+        response = client.post("/merge-automation", json=payload)
+        assert response.status_code == 201
+
+        automation = MergeAutomation.query.filter_by(product="firefox", behavior="bump-main").one()
+        assert automation.decision_task_revision == "abc123"
+        assert automation.from_revision is None
+        assert automation.to_revision == "abc123"
+
+
+@patch("shipit_api.admin.merge_automation.current_user")
+def test_submit_merge_automation_missing_to_revision(mock_user, app):
+    mock_user.has_permissions.return_value = True
+
+    with app.test_client() as client:
+        payload = {
+            "product": "firefox",
+            "behavior": "bump-main",
+            "decision_task_revision": "abc123",
+            "dryRun": True,
+            "version": "130.0",
+            "commitMessage": "Test commit message",
+            "commitAuthor": "test@example.com",
+        }
+
+        response = client.post("/merge-automation", json=payload)
+        assert response.status_code == 400
 
 
 @pytest.mark.parametrize(
@@ -176,7 +246,9 @@ def test_submit_merge_automation_invalid_inputs(mock_user, app, product, behavio
         payload = {
             "product": product,
             "behavior": behavior,
-            "revision": "abc123",
+            "decision_task_revision": "abc123",
+            "from_revision": "abc123",
+            "to_revision": "def456",
             "dryRun": True,
             "version": "130.0",
             "commitMessage": "Test commit",
@@ -195,7 +267,7 @@ def test_submit_merge_automation_invalid_inputs(mock_user, app, product, behavio
 def test_cancel_merge_automation_success(mock_cancel, mock_user, app):
     mock_user.has_permissions.return_value = True
     automation = create_merge_automation_with_defaults(
-        product="firefox", behavior="main-to-beta", revision="abc123", version="130.0", status=TaskStatus.Pending, dry_run=True
+        product="firefox", behavior="main-to-beta", decision_task_revision="abc123", version="130.0", status=TaskStatus.Pending, dry_run=True
     )
     db.session.add(automation)
     db.session.commit()
@@ -218,7 +290,7 @@ def test_cancel_merge_automation_with_taskcluster_task(mock_cancel, mock_user, a
     automation = create_merge_automation_with_defaults(
         product="firefox",
         behavior="main-to-beta",
-        revision="abc123",
+        decision_task_revision="abc123",
         version="130.0",
         status=TaskStatus.Running,
         task_id="fakeTaskId",
@@ -254,7 +326,7 @@ def test_cancel_merge_automation_failed_status(mock_cancel, mock_user, app):
     automation = create_merge_automation_with_defaults(
         product="firefox",
         behavior="main-to-beta",
-        revision="abc123",
+        decision_task_revision="abc123",
         version="130.0",
         status=TaskStatus.Failed,
         task_id="fakeTaskId",
@@ -283,7 +355,7 @@ def test_start_merge_automation_success(mock_trigger, mock_user, app):
     automation = create_merge_automation_with_defaults(
         product="firefox",
         behavior="main-to-beta",
-        revision="abc123",
+        decision_task_revision="abc123",
         version="130.0",
         status=TaskStatus.Pending,
         dry_run=True,
@@ -320,7 +392,7 @@ def test_start_merge_automation_error_cases(mock_user, app, automation_id, autom
         automation = create_merge_automation_with_defaults(
             product="firefox",
             behavior="main-to-beta",
-            revision="abc123",
+            decision_task_revision="abc123",
             version="130.0",
             status=automation_status,
             dry_run=True,
@@ -346,7 +418,7 @@ def test_start_merge_automation_taskcluster_failure(mock_trigger, mock_user, app
     automation = create_merge_automation_with_defaults(
         product="firefox",
         behavior="main-to-beta",
-        revision="abc123",
+        decision_task_revision="abc123",
         version="130.0",
         status=TaskStatus.Pending,
         dry_run=True,
@@ -397,7 +469,9 @@ def test_trigger_merge_automation_action_hook_payload(mock_render_hook, mock_get
     automation = create_merge_automation_with_defaults(
         product="firefox",
         behavior="main-to-beta",
-        revision="abc123",
+        decision_task_revision="abc123",
+        from_revision="abc123",
+        to_revision="def456",
         version="130.0",
         status=TaskStatus.Pending,
         dry_run=True,
@@ -418,6 +492,8 @@ def test_trigger_merge_automation_action_hook_payload(mock_render_hook, mock_get
             "behavior": "main-to-beta",
             "force-dry-run": True,
             "merge-automation-id": automation.id,
+            "from-revision": "abc123",
+            "to-revision": "def456",
         },
         "clientId": "test-client",
     }
@@ -438,7 +514,7 @@ def test_trigger_merge_automation_action_missing_action(mock_get_actions, mock_f
     automation = create_merge_automation_with_defaults(
         product="firefox",
         behavior="main-to-beta",
-        revision="abc123",
+        decision_task_revision="abc123",
         version="130.0",
         status=TaskStatus.Pending,
         dry_run=True,
@@ -478,7 +554,7 @@ def test_get_merge_automation_task_status_scenarios(mock_tasks_get_service, mock
     automation = create_merge_automation_with_defaults(
         product="firefox",
         behavior="main-to-beta",
-        revision="abc123",
+        decision_task_revision="abc123",
         version="130.0",
         status=initial_status,
         task_id="fakeTaskId",
@@ -509,7 +585,7 @@ def test_get_merge_automation_task_status_no_task_id(app):
     automation = create_merge_automation_with_defaults(
         product="firefox",
         behavior="main-to-beta",
-        revision="abc123",
+        decision_task_revision="abc123",
         version="130.0",
         status=TaskStatus.Pending,
         task_id=None,
@@ -530,7 +606,7 @@ def test_mark_merge_automation_completed(mock_user, app):
     automation = create_merge_automation_with_defaults(
         product="firefox",
         behavior="main-to-beta",
-        revision="abc123",
+        decision_task_revision="abc123",
         version="130.0",
         status=TaskStatus.Running,
         task_id="fakeTaskId",
@@ -563,7 +639,7 @@ def test_mark_merge_automation_completed_already_terminal(mock_user, app, initia
     automation = create_merge_automation_with_defaults(
         product="firefox",
         behavior="main-to-beta",
-        revision="abc123",
+        decision_task_revision="abc123",
         version="130.0",
         status=initial_status,
         task_id="fakeTaskId",
@@ -664,7 +740,9 @@ def test_submit_merge_automation_permission_denied(mock_user, app):
         payload = {
             "product": "firefox",
             "behavior": "main-to-beta",
-            "revision": "abc123",
+            "decision_task_revision": "abc123",
+            "from_revision": "abc123",
+            "to_revision": "def456",
             "dryRun": True,
             "version": "130.0",
             "commitMessage": "Test commit",
@@ -685,7 +763,7 @@ def test_start_merge_automation_permission_denied(mock_user, app):
     automation = create_merge_automation_with_defaults(
         product="firefox",
         behavior="main-to-beta",
-        revision="abc123",
+        decision_task_revision="abc123",
         version="130.0",
         status=TaskStatus.Pending,
         dry_run=True,
@@ -708,7 +786,7 @@ def test_cancel_merge_automation_permission_denied(mock_user, app):
     automation = create_merge_automation_with_defaults(
         product="firefox",
         behavior="main-to-beta",
-        revision="abc123",
+        decision_task_revision="abc123",
         version="130.0",
         status=TaskStatus.Pending,
         dry_run=True,
@@ -731,7 +809,7 @@ def test_mark_merge_automation_completed_permission_denied(mock_user, app):
     automation = create_merge_automation_with_defaults(
         product="firefox",
         behavior="main-to-beta",
-        revision="abc123",
+        decision_task_revision="abc123",
         version="130.0",
         status=TaskStatus.Running,
         dry_run=True,

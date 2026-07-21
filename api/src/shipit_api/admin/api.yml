@@ -1014,7 +1014,8 @@ components:
       required:
         - product
         - behavior
-        - revision
+        - decision_task_revision
+        - to_revision
         - dryRun
       type: object
       properties:
@@ -1023,7 +1024,13 @@ components:
         behavior:
           type: string
           example: beta-to-release
-        revision:
+        from_revision:
+          type: string
+          example: 706aadff79254a41b5b5d9616b51d8365cbae573
+        to_revision:
+          type: string
+          example: 8365cbae573706aadff79254a41b5b5d9616b51d
+        decision_task_revision:
           type: string
           example: 706aadff79254a41b5b5d9616b51d8365cbae573
         dryRun:
