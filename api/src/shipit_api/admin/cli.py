@@ -153,7 +153,6 @@ def shipit_import(api_from, limit_releases):
                 r.created = release["created"]
                 r.completed = release["completed"] or release["created"]
                 session.add(r)
-                session.commit()
 
             # Import nightly releases
             click.echo("Fetching nightly release list...")
@@ -200,7 +199,6 @@ def shipit_import(api_from, limit_releases):
                             locales=nightly["locales"],
                         )
                         session.add(n)
-                        session.commit()
 
                         imported += 1
 
@@ -222,7 +220,6 @@ def shipit_import(api_from, limit_releases):
                 v = Version(product_name=product, product_channel=channel, current_version=version)
 
             session.add(v)
-            session.commit()
 
         # Import merge automations
         req = requests.get(f"{api_from}/merge-automation/products")
@@ -256,7 +253,8 @@ def shipit_import(api_from, limit_releases):
                     project=merge["project"],
                 )
                 session.add(m)
-                session.commit()
+
+        session.commit()
 
 
 @click.command(name="trigger-product-details")
